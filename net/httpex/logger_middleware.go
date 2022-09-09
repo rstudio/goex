@@ -1,4 +1,4 @@
-package zapex
+package httpex
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/rstudio/goex/crypto/randex"
-	"github.com/rstudio/goex/net/httpex"
+	"github.com/rstudio/goex/zapex"
 	"go.uber.org/zap"
 )
 
@@ -15,10 +15,10 @@ const (
 	reqIDLen = 12
 )
 
-func LoggerMiddleware(logger *zap.SugaredLogger) func(h http.Handler) http.Handler {
+func LoggerMiddleware(logger *zap.SugaredLogger) MiddlewareFunc {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			reqLog := LoggerWithTraceFields(req.Context(), logger)
+			reqLog := zapex.LoggerWithTraceFields(req.Context(), logger)
 			reqID := randex.String(reqIDLen)
 			started := time.Now()
 
@@ -26,17 +26,17 @@ func LoggerMiddleware(logger *zap.SugaredLogger) func(h http.Handler) http.Handl
 				"id", reqID,
 				"method", req.Method,
 				"path", req.URL.String(),
-				"from", httpex.From(req),
+				"from", From(req),
 			)
 
-			h.ServeHTTP(w, req.WithContext(ContextWithLogger(req.Context(), reqLog)))
+			h.ServeHTTP(w, req.WithContext(zapex.ContextWithLogger(req.Context(), reqLog)))
 
 			since := time.Since(started).String()
 			reqLog.Infow("response",
 				"id", reqID,
 				"method", req.Method,
 				"path", req.URL.String(),
-				"from", httpex.From(req),
+				"from", From(req),
 				"time", since,
 			)
 
