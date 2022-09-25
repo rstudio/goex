@@ -23,10 +23,21 @@ type loggingResponseWriter struct {
 	status int
 }
 
+func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
+	if lrw.status == 0 {
+		lrw.WriteHeader(http.StatusOK)
+	}
+
+	return lrw.ResponseWriter.Write(b)
+}
+
 func (lrw *loggingResponseWriter) WriteHeader(status int) {
-	lrw.status = status
+	if lrw.status != 0 {
+		return
+	}
 
 	lrw.ResponseWriter.WriteHeader(status)
+	lrw.status = status
 }
 
 func LoggerMiddleware(logger *zap.SugaredLogger, optFn ...func(*LoggerMiddlewareOptions)) MiddlewareFunc {
