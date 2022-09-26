@@ -1,9 +1,7 @@
 package httpex
 
 import (
-	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/rstudio/goex/crypto/randex"
@@ -12,37 +10,77 @@ import (
 )
 
 const (
-	reqIDLen = 12
+	defaultReqIDLen = 12
 )
 
-func LoggerMiddleware(logger *zap.SugaredLogger) MiddlewareFunc {
+type LoggerMiddlewareOptions struct {
+	ReqIDLen int
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+
+	status int
+}
+
+func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
+	if lrw.status == 0 {
+		lrw.WriteHeader(http.StatusOK)
+	}
+
+	return lrw.ResponseWriter.Write(b)
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(status int) {
+	if lrw.status != 0 {
+		return
+	}
+
+	lrw.ResponseWriter.WriteHeader(status)
+	lrw.status = status
+}
+
+func LoggerMiddleware(logger *zap.SugaredLogger, optFn ...func(*LoggerMiddlewareOptions)) MiddlewareFunc {
+	opts := &LoggerMiddlewareOptions{
+		ReqIDLen: defaultReqIDLen,
+	}
+
+	for _, f := range optFn {
+		f(opts)
+	}
+
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			reqLog := zapex.LoggerWithTraceFields(req.Context(), logger)
-			reqID := randex.String(reqIDLen)
+			reqLog := zapex.LoggerWithTraceFields(req.Context(), logger).Desugar()
+
+			reqID := randex.String(opts.ReqIDLen)
 			started := time.Now()
 
-			reqLog.Infow("request",
-				"id", reqID,
-				"method", req.Method,
-				"path", req.URL.String(),
-				"from", From(req),
+			reqLog.Info(
+				"request",
+				zap.String("id", reqID),
+				zap.String("method", req.Method),
+				zap.String("url", req.URL.String()),
+				zap.String("from", From(req)),
 			)
 
-			h.ServeHTTP(w, req.WithContext(zapex.ContextWithLogger(req.Context(), reqLog)))
+			lrw := &loggingResponseWriter{ResponseWriter: w}
 
-			since := time.Since(started).String()
-			reqLog.Infow("response",
-				"id", reqID,
-				"method", req.Method,
-				"path", req.URL.String(),
-				"from", From(req),
-				"time", since,
-			)
+			h.ServeHTTP(lrw, req.WithContext(zapex.ContextWithLogger(req.Context(), reqLog.Sugar())))
 
-			if err := zap.L().Sync(); err != nil {
-				fmt.Fprintf(os.Stdout, "zapex:ERROR: failed to sync global zap logger: %v\n", err)
+			fields := []zap.Field{
+				zap.String("id", reqID),
+				zap.String("method", req.Method),
+				zap.String("url", req.URL.String()),
+				zap.String("from", From(req)),
+				zap.Duration("time", time.Since(started)),
 			}
+
+			if lrw.status != 0 {
+				fields = append(fields, zap.Int("status", lrw.status))
+			}
+
+			reqLog.Info("response", fields...)
 		})
 	}
 }
