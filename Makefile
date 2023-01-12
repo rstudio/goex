@@ -5,3 +5,7 @@ test:
 .PHONY: show-cover
 show-cover:
 	go tool cover -func coverage.out
+
+.PHONY: deps-up
+deps-up:
+	go get -t -u ./...
