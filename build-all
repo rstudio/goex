@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -o errexit
+set -o pipefail
+
+main() {
+  cd "$(git rev-parse --show-toplevel)"
+
+  local cmd
+
+  for osname in darwin linux windows; do
+    for archname in amd64 arm64; do
+      # shellcheck disable=SC2043
+      for binname in thumbprint; do
+        cmd=(
+          go build
+          -o "dist/${osname}/${archname}/${binname}"
+          "./cmd/${binname}/..."
+        )
+        printf '# ---> %s\n' "${cmd[*]}"
+
+        "${cmd[@]}" &
+      done
+    done
+  done
+
+  wait
+}
+
+main "${@}"

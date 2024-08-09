@@ -1,3 +1,5 @@
+all: build test
+
 .PHONY: test
 test:
 	go test -v -coverprofile coverage.out ./...
@@ -9,3 +11,7 @@ show-cover:
 .PHONY: deps-up
 deps-up:
 	go get -t -u ./...
+
+.PHONY: build
+build:
+	./build-all
